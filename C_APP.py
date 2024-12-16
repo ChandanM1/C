@@ -9,6 +9,10 @@ from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 
+# Set Matplotlib backend for Streamlit compatibility
+import matplotlib
+matplotlib.use("Agg")
+
 # Streamlit app
 st.title("Customer Segmentation: K-Means, DBSCAN, and Hierarchical Clustering")
 st.write("This application allows customer segmentation using three clustering algorithms: **K-Means**, **DBSCAN**, and **Hierarchical Clustering**.")
