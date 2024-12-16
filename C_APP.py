@@ -1,144 +1,156 @@
-# Import necessary libraries
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import scipy.cluster.hierarchy as sch
-from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics import silhouette_score
+from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
+import warnings
 
-# Set Matplotlib backend for Streamlit compatibility
-import matplotlib
-matplotlib.use("Agg")
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
-# Streamlit app
-st.title("Customer Segmentation: K-Means, DBSCAN, and Hierarchical Clustering")
-st.write("This application allows customer segmentation using three clustering algorithms: **K-Means**, **DBSCAN**, and **Hierarchical Clustering**.")
+# Set Streamlit page configuration
+st.set_page_config(
+    page_title="Customer Segmentation System",
+    page_icon="👥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Upload dataset
-uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+# CSS styling
+st.markdown("""
+    <style>
+        .main-header {
+            text-align: center;
+            padding: 20px;
+            background-color: #f4f4f4;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-if uploaded_file is not None:
-    # Load the dataset
-    data = pd.read_csv(uploaded_file)
-    st.write("### Dataset Preview:")
-    st.write(data.head())
-
-    # Select features for clustering
-    features = st.multiselect(
-        "Select Features for Clustering",
-        options=data.columns.tolist(),
-        default=data.columns[:2].tolist(),
-    )
-    
-    if len(features) < 2:
-        st.error("Please select at least two features for clustering.")
+# Load and preprocess dataset
+@st.cache_data
+def load_data(csv_path):
+    encodings = ['utf-8', 'latin-1', 'iso-8859-1']
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(csv_path, encoding=encoding)
+            break
+        except UnicodeDecodeError:
+            continue
     else:
-        # Extract selected features and scale them
-        X = data[features].values
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
+        raise ValueError("Could not read the CSV file with any standard encoding")
 
-        st.write("### Scaled Features Preview:")
-        st.write(pd.DataFrame(X_scaled, columns=features).head())
+    required_columns = ['Age', 'Income (INR)', 'Spending (1-100)', 'Gender']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Missing required columns: {missing_columns}")
 
-        # Select clustering algorithm
-        algorithm = st.selectbox("Select Clustering Algorithm", ["K-Means", "DBSCAN", "Hierarchical Clustering"])
+    # Encode Gender column
+    le = LabelEncoder()
+    df['Gender_Encoded'] = le.fit_transform(df['Gender'])
 
-        if algorithm == "K-Means":
-            # K-Means Clustering
-            st.write("### K-Means Clustering")
-            n_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=3)
+    return df
 
-            # Fit K-Means
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            y_kmeans = kmeans.fit_predict(X_scaled)
+# Perform clustering
+@st.cache_data
+def perform_clustering(df, method, num_clusters=None, eps=None, min_samples=None):
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(df[['Age', 'Income (INR)', 'Spending (1-100)']])
 
-            # Silhouette Score
-            silhouette = silhouette_score(X_scaled, y_kmeans)
-            st.write(f"Silhouette Score: {silhouette:.2f}")
+    if method == 'KMeans':
+        model = KMeans(n_clusters=num_clusters, random_state=42)
+        df['Cluster'] = model.fit_predict(scaled_data)
+        score = silhouette_score(scaled_data, df['Cluster'])
 
-            # Visualize clusters
-            if len(features) == 2:
-                fig, ax = plt.subplots(figsize=(8, 5))
-                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_kmeans, cmap="viridis", marker="o")
-                ax.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=200, c="red", label="Centroids")
-                ax.set_title("K-Means Clustering")
-                ax.set_xlabel(features[0])
-                ax.set_ylabel(features[1])
-                ax.legend()
-                st.pyplot(fig)
+    elif method == 'DBSCAN':
+        model = DBSCAN(eps=eps, min_samples=min_samples)
+        df['Cluster'] = model.fit_predict(scaled_data)
+        # Exclude noise (-1) from silhouette score
+        valid_clusters = df['Cluster'] >= 0
+        score = silhouette_score(scaled_data[valid_clusters], df['Cluster'][valid_clusters]) if valid_clusters.any() else -1
 
-            # Add cluster labels to data
-            data["Cluster"] = y_kmeans
+    elif method == 'Hierarchical':
+        linkage_matrix = linkage(scaled_data, method='ward')
+        df['Cluster'] = fcluster(linkage_matrix, t=num_clusters, criterion='maxclust')
+        score = silhouette_score(scaled_data, df['Cluster'])
 
-        elif algorithm == "DBSCAN":
-            # DBSCAN Clustering
-            st.write("### DBSCAN Clustering")
-            eps = st.slider("Select Epsilon (eps)", min_value=0.1, max_value=5.0, value=0.5, step=0.1)
-            min_samples = st.slider("Select Minimum Samples", min_value=2, max_value=20, value=5)
+    return df, score
 
-            # Fit DBSCAN
-            dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric="euclidean")
-            y_dbscan = dbscan.fit_predict(X_scaled)
+# Main app function
+def main():
+    # Display header
+    st.markdown('<div class="main-header"><h1>Customer Segmentation System</h1></div>', unsafe_allow_html=True)
 
-            # Number of clusters
-            n_clusters = len(set(y_dbscan)) - (1 if -1 in y_dbscan else 0)
-            st.write(f"Number of Clusters: {n_clusters}")
+    # Sidebar inputs
+    st.sidebar.header("🔧 Configuration")
 
-            # Visualize clusters
-            if len(features) == 2:
-                fig, ax = plt.subplots(figsize=(8, 5))
-                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_dbscan, cmap="viridis", marker="o")
-                ax.set_title("DBSCAN Clustering")
-                ax.set_xlabel(features[0])
-                ax.set_ylabel(features[1])
-                st.pyplot(fig)
+    uploaded_file = st.sidebar.file_uploader("Upload Customer Dataset", type=['csv'])
 
-            # Add cluster labels to data
-            data["Cluster"] = y_dbscan
+    if uploaded_file is not None:
+        try:
+            df = load_data(uploaded_file)
+            st.sidebar.success("Dataset loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Error loading dataset: {e}")
+            return
 
-        elif algorithm == "Hierarchical Clustering":
-            # Hierarchical Clustering
-            st.write("### Hierarchical Clustering")
-            fig, ax = plt.subplots(figsize=(10, 7))
-            dendrogram = sch.dendrogram(sch.linkage(X_scaled, method="ward"), ax=ax)
-            st.pyplot(fig)
+        # Select clustering method
+        clustering_method = st.sidebar.selectbox("Select Clustering Method", ["KMeans", "DBSCAN", "Hierarchical"])
 
-            n_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=3)
+        # Parameters for clustering
+        if clustering_method == 'KMeans':
+            num_clusters = st.sidebar.slider("Number of Clusters", min_value=2, max_value=10, value=3)
+            df, score = perform_clustering(df, method='KMeans', num_clusters=num_clusters)
+        elif clustering_method == 'DBSCAN':
+            eps = st.sidebar.slider("Epsilon (eps)", min_value=0.1, max_value=5.0, step=0.1, value=0.5)
+            min_samples = st.sidebar.slider("Minimum Samples", min_value=1, max_value=20, value=5)
+            df, score = perform_clustering(df, method='DBSCAN', eps=eps, min_samples=min_samples)
+        elif clustering_method == 'Hierarchical':
+            num_clusters = st.sidebar.slider("Number of Clusters", min_value=2, max_value=10, value=3)
+            df, score = perform_clustering(df, method='Hierarchical', num_clusters=num_clusters)
 
-            # Fit Hierarchical Clustering
-            hc = AgglomerativeClustering(n_clusters=n_clusters, metric="euclidean", linkage="ward")
-            y_hc = hc.fit_predict(X_scaled)
+        st.sidebar.info(f"Silhouette Score: {score:.2f}")
 
-            # Visualize clusters
-            if len(features) == 2:
-                fig, ax = plt.subplots(figsize=(8, 5))
-                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_hc, cmap="viridis", marker="o")
-                ax.set_title("Hierarchical Clustering")
-                ax.set_xlabel(features[0])
-                ax.set_ylabel(features[1])
-                st.pyplot(fig)
+        # Main visualization
+        tab1, tab2, tab3 = st.tabs(["📊 Cluster Analysis", "📈 Visualizations", "📋 Full Dataset"])
 
-            # Add cluster labels to data
-            data["Cluster"] = y_hc
+        with tab1:
+            st.markdown("### Cluster Analysis")
+            cluster_summary = df.groupby('Cluster')[['Age', 'Income (INR)', 'Spending (1-100)']].mean()
+            st.dataframe(cluster_summary)
 
-        # Display clustered dataset
-        st.write("### Clustered Data")
-        st.write(data.head())
+        with tab2:
+            st.markdown("### Visualizations")
 
-        # Display cluster statistics
-        st.write("### Cluster Statistics")
-        cluster_summary = data.groupby("Cluster").mean()
-        st.write(cluster_summary)
+            # Cluster Distribution
+            cluster_counts = df['Cluster'].value_counts()
+            plt.figure(figsize=(8, 6))
+            plt.pie(cluster_counts.values, labels=cluster_counts.index, autopct='%1.1f%%', startangle=90)
+            plt.title("Cluster Distribution")
+            st.pyplot(plt)
 
-        # Allow download of clustered dataset
-        csv = data.to_csv(index=False)
-        st.download_button(
-            label="Download Clustered Data",
-            data=csv,
-            file_name="clustered_customers.csv",
-            mime="text/csv",
-        )
+            # Income vs Spending Scatter Plot
+            plt.figure(figsize=(10, 6))
+            for cluster in df['Cluster'].unique():
+                cluster_data = df[df['Cluster'] == cluster]
+                plt.scatter(cluster_data['Income (INR)'], cluster_data['Spending (1-100)'], label=f'Cluster {cluster}')
+            plt.xlabel('Income (INR)')
+            plt.ylabel('Spending (1-100)')
+            plt.title('Income vs Spending by Cluster')
+            plt.legend()
+            st.pyplot(plt)
+
+        with tab3:
+            st.markdown("### Full Dataset")
+            st.dataframe(df)
+
+    else:
+        st.sidebar.warning("Please upload a dataset to proceed.")
+
+if __name__ == '__main__':
+    main()
