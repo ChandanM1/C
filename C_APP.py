@@ -58,14 +58,14 @@ if uploaded_file is not None:
 
             # Visualize clusters
             if len(features) == 2:
-                plt.figure(figsize=(8, 5))
-                plt.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_kmeans, cmap="viridis", marker="o")
-                plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=200, c="red", label="Centroids")
-                plt.title("K-Means Clustering")
-                plt.xlabel(features[0])
-                plt.ylabel(features[1])
-                plt.legend()
-                st.pyplot(plt)
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_kmeans, cmap="viridis", marker="o")
+                ax.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=200, c="red", label="Centroids")
+                ax.set_title("K-Means Clustering")
+                ax.set_xlabel(features[0])
+                ax.set_ylabel(features[1])
+                ax.legend()
+                st.pyplot(fig)
 
             # Add cluster labels to data
             data["Cluster"] = y_kmeans
@@ -86,13 +86,12 @@ if uploaded_file is not None:
 
             # Visualize clusters
             if len(features) == 2:
-                plt.figure(figsize=(8, 5))
-                plt.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_dbscan, cmap="viridis", marker="o")
-                plt.title("DBSCAN Clustering")
-                plt.xlabel(features[0])
-                plt.ylabel(features[1])
-                plt.grid(True)
-                st.pyplot(plt)
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_dbscan, cmap="viridis", marker="o")
+                ax.set_title("DBSCAN Clustering")
+                ax.set_xlabel(features[0])
+                ax.set_ylabel(features[1])
+                st.pyplot(fig)
 
             # Add cluster labels to data
             data["Cluster"] = y_dbscan
@@ -100,9 +99,9 @@ if uploaded_file is not None:
         elif algorithm == "Hierarchical Clustering":
             # Hierarchical Clustering
             st.write("### Hierarchical Clustering")
-            plt.figure(figsize=(10, 7))
-            dendrogram = sch.dendrogram(sch.linkage(X_scaled, method="ward"))
-            st.pyplot(plt)
+            fig, ax = plt.subplots(figsize=(10, 7))
+            dendrogram = sch.dendrogram(sch.linkage(X_scaled, method="ward"), ax=ax)
+            st.pyplot(fig)
 
             n_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=3)
 
@@ -112,13 +111,12 @@ if uploaded_file is not None:
 
             # Visualize clusters
             if len(features) == 2:
-                plt.figure(figsize=(8, 5))
-                plt.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_hc, cmap="viridis", marker="o")
-                plt.title("Hierarchical Clustering")
-                plt.xlabel(features[0])
-                plt.ylabel(features[1])
-                plt.grid(True)
-                st.pyplot(plt)
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y_hc, cmap="viridis", marker="o")
+                ax.set_title("Hierarchical Clustering")
+                ax.set_xlabel(features[0])
+                ax.set_ylabel(features[1])
+                st.pyplot(fig)
 
             # Add cluster labels to data
             data["Cluster"] = y_hc
